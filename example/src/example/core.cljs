@@ -108,6 +108,7 @@
     {:impi/key :gfx
      :pixi.object/position [50 240]
      :pixi.object/type :pixi.object.type/graphics
+     :pixi.graphics/size [500 500]
      :pixi.graphics/shapes
      [{:pixi.shape/type :pixi.shape.type/circle
        :pixi.shape/position [0 20]

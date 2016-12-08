@@ -1,6 +1,8 @@
 (ns impi.core
   (:require cljsjs.pixi))
 
+(def log js/console.log)
+
 (defn- update-count [child f]
   (set! (.-impiCount child) (f (.-impiCount child))))
 
@@ -44,6 +46,7 @@
   (when (zero? (.-impiCount child))
     (set-parent child nil)))
 
+; Slow
 (defn- replace-children [container children]
   (let [length   (-> container .-children .-length)
         replaced (overwrite-children container children)
@@ -112,9 +115,11 @@
    (:pixi.texture/scale-mode texture)])
 
 (defn- create-base-texture [texture]
-  (let [source (-> texture :pixi.texture/source image)
+  (let [source (texture :pixi.texture/source)
         mode   (-> texture :pixi.texture/scale-mode scale-modes)]
-    (js/PIXI.BaseTexture. source mode)))
+    (js/PIXI.BaseTexture. 
+      (cond (string? source) (image source) 
+            true source))))
 
 (defn- get-base-texture [texture]
   (let [key (base-texture-key texture)]
@@ -164,7 +169,9 @@
 
 (defmethod draw-shape! :pixi.shape.type/polygon 
   [graphics {path :pixi.polygon/path}]
-  (.drawPolygon graphics (clj->js path)))
+  (if (= (type path) cljs.core/PersistentVector)
+    (.drawPolygon graphics (clj->js path))
+    (.drawPolygon graphics path)))
 
 (defmethod draw-shape! :pixi.shape.type/rectangle
   [graphics {[x y]          :pixi.shape/position
@@ -177,7 +184,26 @@
              radius         :pixi.rounded-rectangle/radius}]
   (.drawRoundedRect graphics x y width height radius))
 
-(defn- create-filter [filter]
+(defmulti create-filter :pixi.filter/type)
+
+(defmethod create-filter :pixi.filter.type/fxaa-filter
+  [filter]
+  (js/PIXI.filters.FXAAFilter.))
+
+(defmethod create-filter :pixi.filter.type/drop-shadow-filter
+  [filter]
+  (js/PIXI.filters.DropShadowFilter.))
+
+(defmethod create-filter :pixi.filter.type/blur-filter
+  [filter]
+  (js/PIXI.filters.BlurFilter.))
+
+(defmethod create-filter :pixi.filter.type/color-matrix-filter
+  [filter]
+  (js/PIXI.filters.ColorMatrixFilter.))
+
+(defmethod create-filter nil
+  [filter]
   (js/PIXI.Filter.
    (:pixi.filter/vertex filter)
    (:pixi.filter/fragment filter)
@@ -238,17 +264,19 @@
     {:val value, :obj (get-texture value)}))
 
 (defmethod create :pixi.graphics/shapes [graphics value]
-  {:val value, :obj #js {}})
+  {:val {}, :obj #js {}})
 
 (defmethod create :pixi.text/style [_ value]
   {:val {}, :obj (js/PIXI.TextStyle.)})
 
 (defmethod create :pixi.object/filters [_ value]
-  {:val value, :obj (create-filter value)})
+  {:val {}, :obj (create-filter value)})
 
-(defmulti update-prop! (fn [object index attr value] attr))
+(defmulti update-prop! (fn [object index attr value]  attr))
 
-(defmethod update-prop! :default [object _ _ _])
+(defmethod update-prop! :default [object _ attr _]
+  ; (print :nil attr)
+  )
 
 (defmethod update-prop! :pixi.object/alpha [object _ _ alpha]
   (set! (.-alpha object) (or alpha 1.0)))
@@ -264,11 +292,38 @@
   (set! (.-rotation object) angle))
 
 (defmethod update-prop! :pixi.object/scale [object _ _ [x y]]
-  (set! (-> object .-scale .-x) (or x 1))
-  (set! (-> object .-scale .-y) (or y 1)))
+  (set! (-> object .-scale .-x) x)
+  (set! (-> object .-scale .-y) y))
 
 (defmethod update-prop! :pixi.object/filters [object index attr filters]
   (set! (.-filters object) (apply array (map #(build! index attr %) filters))))
+
+(defmethod update-prop! :pixi.blur-filter/blur  [object _ _ blur]
+  (set! (.-blur object) blur))
+
+(defmethod update-prop! :pixi.blur-filter/blur-x  [object _ _ blur]
+  (set! (.-blurX object) blur))
+
+(defmethod update-prop! :pixi.blur-filter/blur-y  [object _ _ blur]
+  (set! (.-blurY object) blur))
+
+(defmethod update-prop! :pixi.drop-shadow-filter/blur  [object _ _ blur]
+  (set! (.-blur object) blur))
+
+(defmethod update-prop! :pixi.drop-shadow-filter/color  [object _ _ color]
+  (set! (.-color object) color))
+
+(defmethod update-prop! :pixi.drop-shadow-filter/angle  [object _ _ angle]
+  (set! (.-angle object) angle))
+
+(defmethod update-prop! :pixi.drop-shadow-filter/distance  [object _ _ distance]
+  (set! (.-distance object) distance))
+
+(defmethod update-prop! :pixi.drop-shadow-filter/alpha  [object _ _ alpha]
+  (set! (.-alpha object) alpha))
+
+(defmethod update-prop! :pixi.color-matrix-filter/distance  [object _ _ matrix]
+  (set! (.-matrix object) matrix))
 
 (defmethod update-prop! :pixi.object/interactive? [object _ _ interactive?]
   (set! (.-interactive object) interactive?))
@@ -283,36 +338,53 @@
     (set! (.-containsPoint object) pred)
     (js-delete object "containsPoint")))
 
-(defmethod update-prop! :pixi.event/click [object index _ listener]
-  (replace-listener object "click" index listener))
+(def event-properties
+  {:pixi.event/click           "click"
+   :pixi.event/mousemove       "mousemove"
+   :pixi.event/mouseout        "mouseout"
+   :pixi.event/mouseover       "mouseover"
+   :pixi.event/mouseup         "mouseup"
+   :pixi.event/mouseupoutside  "mouseupoutside"
+   :pixi.event/rightclick      "rightclick"
+   :pixi.event/rightdown       "rightdown"
+   :pixi.event/rightup         "rightup"
+   :pixi.event/rightupoutside  "rightupoutside"
+   :pixi.event/tap             "tap"
+   :pixi.event/touchend        "touchend"
+   :pixi.event/touchendoutside "touchendoutside"
+   :pixi.event/touchmove       "touchmove"
+   :pixi.event/touchstart      "touchstart"})
 
-(defmethod update-prop! :pixi.event/mouse-down [object index _ listener]
-  (replace-listener object "mousedown" index listener))
+(doseq [attr (keys event-properties)]
+  (derive attr :pixi/event))
 
-(defmethod update-prop! :pixi.event/mouse-up [object index _ listener]
-  (replace-listener object "mouseup" index listener))
-
-(defmethod update-prop! :pixi.event/mouse-over [object index _ listener]
-  (replace-listener object "mouseover" index listener))
-
-(defmethod update-prop! :pixi.event/mouse-out [object index _ listener]
-  (replace-listener object "mouseout" index listener))
+(defmethod update-prop! :pixi.event [object index event listener]
+  (replace-listener object (event-properties event) index listener))
 
 (defmethod update-prop! :pixi.container/children [container index attr children]
   (->> (if (map? children) (vals children) children)
        (map #(build! index attr %))
+       (doall)
        (replace-children container)))
+
+(defmethod update-prop! :pixi.container/size [container index attr [w h]]
+  (set! (.-width container) w)
+  (set! (.-height container) h))
 
 (defmethod update-prop! :pixi.graphics/shapes 
   [graphics-obj _ _ shapes]
   (.clear graphics-obj)
-  (doseq [{:keys [pixi.shape/fill pixi.shape/line] :as shape}
+  (doseq [{:keys [pixi.shape/fill pixi.shape/line pixi.shape/shadow] :as shape}
           (if (map? shapes) (vals shapes) shapes)]
     (.lineStyle graphics-obj
                 (or (:pixi.line/width line) 0)
                 (:pixi.line/color line)
                 (or (:pixi.line/alpha line) 1))
-    (when fill 
+    (set! (.-shadowColor graphics-obj)   (:pixi.shadow/color shadow))
+    (set! (.-shadowBlur graphics-obj)    (:pixi.shadow/blur shadow))
+    (set! (.-shadowOffsetX graphics-obj) (some-> shadow :pixi.shadow/offset first))
+    (set! (.-shadowOffsetY graphics-obj) (some-> shadow :pixi.shadow/offset second))
+    (when fill
       (.beginFill graphics-obj
                   (:pixi.fill/color fill)
                   (or (:pixi.fill/alpha fill) 1)))
@@ -335,6 +407,10 @@
   (set! (-> sprite .-anchor .-x) x)
   (set! (-> sprite .-anchor .-y) y))
 
+(defmethod update-prop! :pixi.object/pivot [sprite _ _ [x y]]
+  (set! (-> sprite .-pivot .-x) x)
+  (set! (-> sprite .-pivot .-y) y))
+
 (defmethod update-prop! :pixi.sprite/texture [sprite index attr texture]
   (set! (.-texture sprite) (build! index attr texture)))
 
@@ -353,15 +429,26 @@
 (defmethod update-prop! :pixi.renderer/background-color [renderer _ _ color]
   (set! (.-backgroundColor renderer) color))
 
-(defmethod update-prop! :pixi.filter/padding [filter _ _ padding]
-  (set! (.-padding filter) padding))
+(defmethod update-prop! :pixi.filter/padding [object _ _ padding]
+  (set! (.-padding object) padding))
 
 (defn- run-kv! [proc m]
   (reduce-kv (fn [_ k v] (proc k v) nil) nil m)
   nil)
 
+(defmulti prop-not-changed?  (fn [k v ov] k))
+
+(defmethod prop-not-changed? :pixi.container/children  [_ v ov]
+  (identical? v ov))
+
+(defmethod prop-not-changed? :pixi.graphics/shapes  [_ v ov]
+  (identical? v ov))
+
+(defmethod prop-not-changed? :default  [_ v ov]
+  (= v ov))
+
 (defn- update-changed-prop! [object index old-value k v]
-  (when-not (= v (old-value k)) (update-prop! object index k v)))
+  (when-not (prop-not-changed? k v (old-value k)) (update-prop! object index k v)))
 
 (defn- update-removed-prop! [object index new-value k]
   (when-not (contains? new-value k) (update-prop! object index k nil)))
@@ -388,24 +475,24 @@
     :pixi.filter/uniforms})
 
 (defn- should-recreate? [old-value new-value]
-  (not= (select-keys old-value recreate-keys)
-        (select-keys new-value recreate-keys)))
+  false)
 
 (def build-cache (atom {}))
 
 (defn- build! [index attr value]
   (let [key    (:impi/key value)
-        index  (-> index (conj attr) (cond-> key (conj key)))
+        index  (or (:impi.key/shared value) (conj index attr key))
         cache! #(swap! build-cache assoc index %)]
     (:obj (if-let [cached (@build-cache index)]
             (let [cached-val (:val cached)]
-              (if (= value cached-val)
+              (if (identical? value cached-val)
                 cached
-                (-> (if (should-recreate? cached-val value)
+                (do ;(print :t (value :pixi.object/type))
+                    (-> (if (should-recreate? cached-val value)
                       (create attr value)
                       cached)
                     (update! index attr value)
-                    (doto cache!))))
+                    (doto cache!)))))
             (-> (create attr value)
                 (update! index attr value)
                 (doto cache!))))))
