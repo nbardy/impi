@@ -218,6 +218,9 @@
 (defmethod create-object :pixi.object.type/sprite [_]
   {:val {}, :obj (js/PIXI.Sprite.)})
 
+(defmethod create-object :pixi.object.type/tiling-sprite [_]
+  {:val {}, :obj (js/PIXI.extras.TilingSprite.)})
+
 (defmethod create-object :pixi.object.type/container [_]
   {:val {}, :obj (js/PIXI.Container.)})
 
@@ -340,11 +343,12 @@
 
 (def event-properties
   {:pixi.event/click           "click"
-   :pixi.event/mousemove       "mousemove"
-   :pixi.event/mouseout        "mouseout"
-   :pixi.event/mouseover       "mouseover"
-   :pixi.event/mouseup         "mouseup"
-   :pixi.event/mouseupoutside  "mouseupoutside"
+   :pixi.event/mouse-down       "mousedown"
+   :pixi.event/mouse-move       "mousemove"
+   :pixi.event/mouse-out        "mouseout"
+   :pixi.event/mouse-over       "mouseover"
+   :pixi.event/mouse-up         "mouseup"
+   :pixi.event/mouse-upoutside  "mouseupoutside"
    :pixi.event/rightclick      "rightclick"
    :pixi.event/rightdown       "rightdown"
    :pixi.event/rightup         "rightup"
@@ -413,6 +417,12 @@
 
 (defmethod update-prop! :pixi.sprite/texture [sprite index attr texture]
   (set! (.-texture sprite) (build! index attr texture)))
+
+(defmethod update-prop! :pixi.tiling-sprite/tile-scale [sprite _ _ [x y]]
+  (set! (.-tileScale sprite) #js {:x x :y y}))
+
+(defmethod update-prop! :pixi.tiling-sprite/tile-position [sprite _ _ [x y]]
+  (set! (.-tilePosition sprite) #js {:x x :y y}))
 
 (defmethod update-prop! :pixi.render-texture/source [texture index attr scene]
   (let [source   (build! index attr scene)
