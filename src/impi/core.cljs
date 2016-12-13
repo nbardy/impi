@@ -1,3 +1,21 @@
+Skip to content
+This repository
+Search
+Pull requests
+Issues
+Gist
+ @nbardy
+ Unwatch 1
+  Star 0
+ Fork 2 nbardy/impi
+forked from weavejester/impi
+ Code  Pull requests 0  Projects 0  Wiki  Pulse  Graphs  Settings
+Tree: 5ad7bab1a4 Find file Copy pathimpi/src/impi/core.cljs
+5ad7bab  15 seconds ago
+@nbardy nbardy Add Tiling Sprites
+2 contributors @weavejester @nbardy
+RawBlameHistory    
+489 lines (383 sloc)  16.8 KB
 (ns impi.core
   (:require cljsjs.pixi))
 
@@ -222,6 +240,9 @@
 (defmethod create-object :pixi.object.type/container [_]
   {:val {}, :obj (js/PIXI.Container.)})
 
+(defmethod create-object :pixi.object.type/tiling-sprite [_]
+  {:val {}, :obj (js/PIXI.extras.TilingSprite.)})
+
 (defmethod create-object :pixi.object.type/graphics [_]
   {:val {}, :obj (js/PIXI.Graphics.)})
 
@@ -250,6 +271,12 @@
     {:val (dissoc value :pixi.render-texture/source)
      :obj (create-render-texture value)}
     {:val value, :obj (get-texture value)}))
+
+(defmethod update-prop! :pixi.tiling-sprite/tile-scale [sprite _ _ [x y]]
+  (set! (.-tileScale sprite) #js {:x x :y y}))
+
+(defmethod update-prop! :pixi.tiling-sprite/tile-position [sprite _ _ [x y]]
+  (set! (.-tilePosition sprite) #js {:x x :y y}))
 
 (defmethod create :pixi.graphics/shapes [graphics value]
   {:val value, :obj #js {}})
@@ -476,3 +503,5 @@
     (let [view (.-view renderer)]
       (when-let [parent (.-parentNode view)]
         (.removeChild parent view)))))
+Contact GitHub API Training Shop Blog About
+© 2016 GitHub, Inc. Terms Privacy Security Status Help
